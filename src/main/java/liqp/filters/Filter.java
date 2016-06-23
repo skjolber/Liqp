@@ -31,6 +31,7 @@ public abstract class Filter extends LValue {
         registerFilter(new Downcase());
         registerFilter(new Escape());
         registerFilter(new Escape_Once());
+        registerFilter(new Escape_Quotes());
         registerFilter(new First());
         registerFilter(new H());
         registerFilter(new Join());
