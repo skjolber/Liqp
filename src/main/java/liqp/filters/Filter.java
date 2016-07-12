@@ -26,6 +26,7 @@ public abstract class Filter extends LValue {
         // Initialize all standard filters.
         registerFilter(new Append());
         registerFilter(new Capitalize());
+        registerFilter(new Ceil());
         registerFilter(new Date());
         registerFilter(new Divided_By());
         registerFilter(new Downcase());
@@ -46,6 +47,7 @@ public abstract class Filter extends LValue {
         registerFilter(new Remove_First());
         registerFilter(new Replace());
         registerFilter(new Replace_First());
+        registerFilter(new Round());
         registerFilter(new Size());
         registerFilter(new Sort());
         registerFilter(new Split());
