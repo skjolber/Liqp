@@ -40,6 +40,7 @@ public abstract class Filter extends LValue {
         registerFilter(new liqp.filters.Map());
         registerFilter(new Minus());
         registerFilter(new Modulo());
+        registerFilter(new Money());
         registerFilter(new Newline_To_Br());
         registerFilter(new Plus());
         registerFilter(new Prepend());
