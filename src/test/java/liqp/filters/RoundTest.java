@@ -18,8 +18,8 @@ public class RoundTest {
                 {"{{ \"4.4\" | round }}", "4"},
                 {"{{ 5 | round }}", "5"},
                 {"{{ wut | round }}", "0"},
-                {"{{ wut | round: 1 }}", "0.0"},
-                {"{{ 183.357 | round: 2 }}", "183.36"}
+                {"{{ wut | round: 1 }}", "0,0"},
+                {"{{ 183.357 | round: 2 }}", "183,36"}
         };
 
         for (String[] test : tests) {
