@@ -8,6 +8,30 @@ import static org.junit.Assert.assertThat;
 
 public class TemplateTest {
 
+    static class Foo {
+
+        public String a = "A";
+        private String b = "B";
+        private String c = "C";
+
+        public String getB() {
+            return b;
+        }
+    }
+
+    @Test
+    public void renderObjectTest() throws RecognitionException {
+
+        // `a` is public
+        assertThat(Template.parse("{{foo.a}}").render(true, "foo", new Foo()), is("A"));
+
+        // there is a public `getB()` method that exposes `b`
+        assertThat(Template.parse("{{foo.b}}").render(true, "foo", new Foo()), is("B"));
+
+        // `c` is not accessible
+        assertThat(Template.parse("{{foo.c}}").render(true, "foo", new Foo()), is(""));
+    }
+
     @Test
     public void renderJSONStringTest() throws RecognitionException {
 
@@ -43,14 +67,16 @@ public class TemplateTest {
                 "c" /* no value */
         );
         assertThat(rendered, is(expected + expected));
+
+        rendered = Template.parse("{{a}}{{b}}{{c}}").render(
+                "a", "A",
+                "b", "B",
+                "c", "C"
+        );
+        assertThat(rendered, is("ABC"));
     }
 
     @Test(expected = RuntimeException.class)
-    public void renderVarArgsTestInvalidKey1() throws RecognitionException {
-        Template.parse("mu").render(123, 456);
-    }
-
-    @Test(expected = NullPointerException.class)
     public void renderVarArgsTestInvalidKey2() throws RecognitionException {
         Template.parse("mu").render(null, 456);
     }

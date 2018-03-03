@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
-class Date extends Filter {
+public class Date extends Filter {
 
     private static Locale locale = Locale.ENGLISH;
     private static Set<String> datePatterns = new HashSet<String>();
@@ -15,7 +15,7 @@ class Date extends Filter {
 
     static {
         addDatePattern("yyyy-MM-dd HH:mm:ss");
-        addDatePattern("EEE MMM ddhh:mm:ss yyyy");
+        addDatePattern("EEE MMM dd hh:mm:ss yyyy");
         init();
     }
 

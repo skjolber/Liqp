@@ -1,8 +1,7 @@
 package liqp.tags;
 
+import liqp.TemplateContext;
 import liqp.nodes.LNode;
-
-import java.util.Map;
 
 class Capture extends Tag {
 
@@ -10,13 +9,14 @@ class Capture extends Tag {
      * Block tag that captures text into a variable
      */
     @Override
-    public Object render(Map<String, Object> context, LNode... nodes) {
+    public Object render(TemplateContext context, LNode... nodes) {
 
         String id = super.asString(nodes[0].render(context));
 
         LNode block = nodes[1];
 
-        context.put(id, block.render(context));
+        // Capture causes variable to be saved "globally"
+        context.put(id, block.render(context), true);
 
         return null;
     }

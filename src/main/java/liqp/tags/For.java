@@ -1,6 +1,9 @@
 package liqp.tags;
 
 import java.util.List;
+
+import liqp.TemplateContext;
+import liqp.exceptions.ExceededMaxIterationsException;
 import liqp.nodes.BlockNode;
 import liqp.nodes.LNode;
 
@@ -36,7 +39,7 @@ class For extends Tag {
      * For loop
      */
     @Override
-    public Object render(Map<String, Object> context, LNode... nodes) {
+    public Object render(TemplateContext context, LNode... nodes) {
 
         // The first node in the array denotes whether this is a for-tag
         // over an array, `for item in array ...`, or a for-tag over a
@@ -45,16 +48,17 @@ class For extends Tag {
 
         String id = super.asString(nodes[1].render(context));
 
-        context.put(FORLOOP, new HashMap<String, Object>());
+        // Each for tag has its own context that keeps track of its own variables (scope)
+        TemplateContext nestedContext = new TemplateContext(context);
 
-        Object rendered = array ? renderArray(id, context, nodes) : renderRange(id, context, nodes);
+        nestedContext.put(FORLOOP, new HashMap<String, Object>());
 
-        context.remove(FORLOOP);
+        Object rendered = array ? renderArray(id, nestedContext, nodes) : renderRange(id, nestedContext, nodes);
 
         return rendered;
     }
 
-    private Object renderArray(String id, Map<String, Object> context, LNode... tokens) {
+    private Object renderArray(String id, TemplateContext context, LNode... tokens) {
 
         StringBuilder builder = new StringBuilder();
 
@@ -82,6 +86,8 @@ class For extends Tag {
         int continueIndex = offset;
 
         for (int i = offset, n = 0; n < limit && i < array.length; i++, n++) {
+
+            context.incrementIterations();
 
             continueIndex = i;
 
@@ -135,12 +141,12 @@ class For extends Tag {
             }
         }
 
-        context.put(CONTINUE, continueIndex + 1);
+        context.put(CONTINUE, continueIndex + 1, true);
 
         return builder.toString();
     }
 
-    private Object renderRange(String id, Map<String, Object> context, LNode... tokens) {
+    private Object renderRange(String id, TemplateContext context, LNode... tokens) {
 
         StringBuilder builder = new StringBuilder();
 
@@ -163,6 +169,8 @@ class For extends Tag {
             int continueIndex = from + offset;
 
             for (int i = from + offset, n = 0; i <= to && n < limit; i++, n++) {
+
+                context.incrementIterations();
 
                 continueIndex = i;
 
@@ -222,6 +230,9 @@ class For extends Tag {
 
             context.put(CONTINUE, continueIndex + 1);
         }
+        catch (ExceededMaxIterationsException e) {
+            throw e;
+        }
         catch (Exception e) {
             /* just ignore incorrect expressions */
         }
@@ -229,7 +240,7 @@ class For extends Tag {
         return builder.toString();
     }
 
-    private Map<String, Integer> getAttributes(int fromIndex, Map<String, Object> context, LNode... tokens) {
+    private Map<String, Integer> getAttributes(int fromIndex, TemplateContext context, LNode... tokens) {
 
         Map<String, Integer> attributes = new HashMap<String, Integer>();
 

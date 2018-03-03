@@ -1,10 +1,10 @@
 package liqp.tags;
 
 import liqp.Template;
+import liqp.TemplateContext;
 import liqp.nodes.LNode;
 
 import java.io.File;
-import java.util.Map;
 
 public class Include extends Tag {
 
@@ -12,11 +12,7 @@ public class Include extends Tag {
     public static String DEFAULT_EXTENSION = ".liquid";
 
     @Override
-    public Object render(Map<String, Object> context, LNode... nodes) {
-
-        // This value will always be defined: either a custom file set by the
-        // user, or else inside TagNode.
-        File includesDirectory = (File)context.get(INCLUDES_DIRECTORY_KEY);
+    public Object render(TemplateContext context, LNode... nodes) {
 
         try {
             String includeResource = super.asString(nodes[0].render(context));
@@ -24,16 +20,22 @@ public class Include extends Tag {
             if(includeResource.indexOf('.') > 0) {
                 extension = "";
             }
-            File includeResourceFile = new File(includesDirectory, includeResource + extension);
-            Template include = Template.parse(includeResourceFile);
-
+            File includeResourceFile;            
+            File includesDirectory = (File) context.get(INCLUDES_DIRECTORY_KEY);
+            if (includesDirectory != null) {
+                includeResourceFile = new File(includesDirectory, includeResource + extension);
+            } 
+            else {
+              includeResourceFile = new File(context.flavor.snippetsFolderName, includeResource + extension);
+            }            
+            Template template = Template.parse(includeResourceFile, context.flavor);
             // check if there's a optional "with expression"
             if(nodes.length > 1) {
                 Object value = nodes[1].render(context);
                 context.put(includeResource, value);
             }
 
-            return include.render(context);
+            return template.render(context.getVariables());
 
         } catch(Exception e) {
             return "";

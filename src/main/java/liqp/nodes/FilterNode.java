@@ -1,41 +1,52 @@
 package liqp.nodes;
 
+import liqp.TemplateContext;
+import liqp.exceptions.LiquidException;
 import liqp.filters.Filter;
+import org.antlr.runtime.tree.CommonTree;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class FilterNode implements LNode {
 
-    private Filter filter;
-    private List<LNode> params;
+    private final Filter filter;
+    private final List<LNode> params;
+    private final CommonTree tree;
 
-    public FilterNode(String filterName, Filter filter) {
+    public FilterNode(CommonTree tree, Filter filter) {
         if (filter == null) {
-            throw new IllegalArgumentException("no filter available  named: " + filterName);
+            throw new IllegalArgumentException("error on line " + tree.getLine() + ", index " +
+                tree.getTokenStartIndex() + ": no filter available named: " + tree.getText());
         }
         this.filter = filter;
         this.params = new ArrayList<LNode>();
+        this.tree = tree;
     }
 
     public void add(LNode param) {
         params.add(param);
     }
 
-    public Object apply(Object value, Map<String, Object> variables) {
+    public Object apply(Object value, TemplateContext context) {
 
-        List<Object> paramValues = new ArrayList<Object>();
+        try {
+            List<Object> paramValues = new ArrayList<Object>();
 
-        for (LNode node : params) {
-            paramValues.add(node.render(variables));
+            for (LNode node : params) {
+                paramValues.add(node.render(context));
+            }
+
+            return filter.apply(value, context, paramValues.toArray(new Object[paramValues.size()]));
         }
-
-        return filter.apply(value, paramValues.toArray(new Object[paramValues.size()]));
+        catch (Exception e) {
+            throw new RuntimeException("error on line " + tree.getLine() + ", index " +
+                tree.getTokenStartIndex() + ": " + e.getMessage(), e);
+        }
     }
 
     @Override
-    public Object render(Map<String, Object> context) {
+    public Object render(TemplateContext context) {
         throw new RuntimeException("cannot render a filter");
     }
 }

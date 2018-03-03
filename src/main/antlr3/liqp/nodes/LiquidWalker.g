@@ -47,6 +47,7 @@ options {
   private Map<String, Tag> tags;
   private Map<String, Filter> filters;
   private Flavor flavor;
+  private boolean isRootBlock = true;
 
   public LiquidWalker(TreeNodeStream nodes, Map<String, Tag> tags, Map<String, Filter> filters) {
     this(nodes, tags, filters, Flavor.LIQUID);
@@ -65,7 +66,10 @@ walk returns [LNode node]
  ;
 
 block returns [BlockNode node]
-@init{$node = new BlockNode();}
+@init{
+  $node = new BlockNode(isRootBlock);
+  isRootBlock = false;
+}
  : ^(BLOCK (atom {$node.add($atom.node);})*)
  ;
 
@@ -216,16 +220,15 @@ continue_tag returns [LNode node]
  : Continue {$node = new AtomNode(Tag.Statement.CONTINUE);}
  ;
 
-
 custom_tag returns [LNode node]
 @init{List<LNode> expressions = new ArrayList<LNode>();}
- : ^(CUSTOM_TAG Id (expr {expressions.add($expr.node);})*)
+ : ^(CUSTOM_TAG Id Str? {expressions.add(new AtomNode($Str.text));})
     {$node = new TagNode($Id.text, tags.get($Id.text), expressions.toArray(new LNode[expressions.size()]));}
  ;
 
 custom_tag_block returns [LNode node]
 @init{List<LNode> expressions = new ArrayList<LNode>();}
- : ^(CUSTOM_TAG_BLOCK Id (expr {expressions.add($expr.node);})* block {expressions.add($block.node);})
+ : ^(CUSTOM_TAG_BLOCK Id Str? {expressions.add(new AtomNode($Str.text));} block {expressions.add($block.node);})
     {$node = new TagNode($Id.text, tags.get($Id.text), expressions.toArray(new LNode[expressions.size()]));}
  ;
 
@@ -234,7 +237,7 @@ output returns [OutputNode node]
  ;
 
 filter returns [FilterNode node]
- : ^(FILTER Id {$node = new FilterNode($Id.text, filters.get($Id.text));} ^(PARAMS params[$node]?))
+ : ^(FILTER Id {$node = new FilterNode($Id, filters.get($Id.text));} ^(PARAMS params[$node]?))
  ;
 
 params[FilterNode node]

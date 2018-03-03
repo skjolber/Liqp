@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 
 /**
  * The main class of this library. Use one of its static
@@ -45,7 +46,13 @@ public class Template {
      */
     private final Map<String, Filter> filters;
 
-    private final Flavor flavor;
+    private final long templateSize;
+
+    private ProtectionSettings protectionSettings = new ProtectionSettings.Builder().build();
+
+    private RenderSettings renderSettings = new RenderSettings.Builder().build();
+
+    private final ParseSettings parseSettings;
 
     /**
      * Creates a new Template instance from a given input.
@@ -56,21 +63,19 @@ public class Template {
      * @param filters
      *         the filters this instance will make use of.
      */
-    private Template(String input, Map<String, Tag> tags, Map<String, Filter> filters) {
-        this(input, tags, filters, Flavor.LIQUID);
-    }
-
-    private Template(String input, Map<String, Tag> tags, Map<String, Filter> filters, Flavor flavor) {
+    private Template(String input, Map<String, Tag> tags, Map<String, Filter> filters, ParseSettings settings) {
 
         this.tags = tags;
         this.filters = filters;
-        this.flavor = flavor;
+        this.parseSettings = settings;
 
-        LiquidLexer lexer = new LiquidLexer(new ANTLRStringStream(input));
-        LiquidParser parser = new LiquidParser(flavor, new CommonTokenStream(lexer));
+        ANTLRStringStream stream = new ANTLRStringStream(input);
+        this.templateSize = stream.size();
+        LiquidLexer lexer = new LiquidLexer(parseSettings.stripSpacesAroundTags, stream);
+        LiquidParser parser = new LiquidParser(parseSettings.flavor, new CommonTokenStream(lexer));
 
         try {
-            root = (CommonTree) parser.parse().getTree();
+            root = parser.parse().getTree();
         }
         catch (RecognitionException e) {
             throw new RuntimeException("could not parse input: " + input, e);
@@ -83,20 +88,18 @@ public class Template {
      * @param file
      *         the file holding the Liquid source.
      */
-    private Template(File file, Map<String, Tag> tags, Map<String, Filter> filters) throws IOException {
-        this(file, tags, filters, Flavor.LIQUID);
-    }
-
-    private Template(File file, Map<String, Tag> tags, Map<String, Filter> filters, Flavor flavor) throws IOException {
+    private Template(File file, Map<String, Tag> tags, Map<String, Filter> filters, ParseSettings parseSettings) throws IOException {
 
         this.tags = tags;
         this.filters = filters;
-        this.flavor = flavor;
+        this.parseSettings = parseSettings;
 
         try {
-            LiquidLexer lexer = new LiquidLexer(new ANTLRFileStream(file.getAbsolutePath()));
-            LiquidParser parser = new LiquidParser(flavor, new CommonTokenStream(lexer));
-            root = (CommonTree) parser.parse().getTree();
+            ANTLRFileStream stream = new ANTLRFileStream(file.getAbsolutePath());
+            this.templateSize = stream.size();
+            LiquidLexer lexer = new LiquidLexer(parseSettings.stripSpacesAroundTags, stream);
+            LiquidParser parser = new LiquidParser(parseSettings.flavor, new CommonTokenStream(lexer));
+            root = parser.parse().getTree();
         }
         catch (RecognitionException e) {
             throw new RuntimeException("could not parse input from " + file, e);
@@ -121,7 +124,7 @@ public class Template {
      * @return a new Template instance from a given input string.
      */
     public static Template parse(String input) {
-        return new Template(input, Tag.getTags(), Filter.getFilters());
+        return new Template(input, Tag.getTags(), Filter.getFilters(), new ParseSettings.Builder().build());
     }
 
     /**
@@ -133,11 +136,27 @@ public class Template {
      * @return a new Template instance from a given input file.
      */
     public static Template parse(File file) throws IOException {
-        return parse(file, Flavor.LIQUID);
+        return new Template(file, Tag.getTags(), Filter.getFilters(), new ParseSettings.Builder().build());
     }
 
+    public static Template parse(File file, ParseSettings settings) throws IOException {
+        return new Template(file, Tag.getTags(), Filter.getFilters(), settings);
+    }
+
+    public static Template parse(String input, ParseSettings settings) {
+        return new Template(input, Tag.getTags(), Filter.getFilters(), settings);
+    }
+
+    @Deprecated // Use `parse(file, settings)` instead
     public static Template parse(File file, Flavor flavor) throws IOException {
-        return new Template(file, Tag.getTags(), Filter.getFilters(), flavor);
+        ParseSettings settings = new ParseSettings.Builder().withFlavor(flavor).build();
+        return parse(file, settings);
+    }
+
+    @Deprecated // Use `parse(input, settings)` instead
+    public static Template parse(String input, Flavor flavor) throws IOException {
+        ParseSettings settings = new ParseSettings.Builder().withFlavor(flavor).build();
+        return parse(input, settings);
     }
 
     public Template with(Tag tag) {
@@ -147,6 +166,16 @@ public class Template {
 
     public Template with(Filter filter) {
         this.filters.put(filter.name, filter);
+        return this;
+    }
+
+    public Template withProtectionSettings(ProtectionSettings protectionSettings) {
+        this.protectionSettings = protectionSettings;
+        return this;
+    }
+
+    public Template withRenderSettings(RenderSettings renderSettings) {
+        this.renderSettings = renderSettings;
         return this;
     }
 
@@ -174,10 +203,18 @@ public class Template {
         return render(map);
     }
 
+    public String render() {
+        return render(new HashMap<String, Object>());
+    }
+
     /**
      * Renders the template.
      *
-     * @param context
+     * @param key
+     *         a key
+     * @param value
+     *         the value belonging to the key
+     * @param keyValues
      *         an array denoting key-value pairs where the
      *         uneven numbers (even indexes) should be Strings.
      *         If the length of this array is uneven, the last
@@ -188,22 +225,19 @@ public class Template {
      *
      * @return a string denoting the rendered template.
      */
-    public String render(Object... context) {
+    public String render(String key, Object value, Object... keyValues) {
+        return render(false, key, value, keyValues);
+    }
+
+    public String render(boolean convertValueToMap, String key, Object value, Object... keyValues) {
 
         Map<String, Object> map = new HashMap<String, Object>();
+        putStringKey(convertValueToMap, key, value, map);
 
-        for (int i = 0; i < context.length - 1; i++) {
-
-            Object key = context[i];
-
-            if (key.getClass() != String.class) {
-                throw new RuntimeException("illegal key: " + String.valueOf(key) +
-                        " (" + key.getClass().getName() + "). Must be a String.");
-            }
-
-            Object value = context[i + 1];
-
-            map.put((String) key, value);
+        for (int i = 0; i < keyValues.length - 1; i += 2) {
+            key = String.valueOf(keyValues[i]);
+            value = keyValues[i + 1];
+            putStringKey(convertValueToMap, key, value, map);
         }
 
         return render(map);
@@ -212,24 +246,53 @@ public class Template {
     /**
      * Renders the template.
      *
-     * @param context
+     * @param variables
      *         a Map denoting the (possibly nested)
      *         variables that can be used in this
      *         Template.
      *
      * @return a string denoting the rendered template.
      */
-    public String render(Map<String, Object> context) {
+    public String render(final Map<String, Object> variables) {
+        return render(variables, Executors.newSingleThreadExecutor(), true);
+    }
 
-        LiquidWalker walker = new LiquidWalker(new CommonTreeNodeStream(root), this.tags, this.filters, this.flavor);
+    public String render(final Map<String, Object> variables, ExecutorService executorService, boolean shutdown) {
+
+        if (this.templateSize > this.protectionSettings.maxTemplateSizeBytes) {
+            throw new RuntimeException("template exceeds " + this.protectionSettings.maxTemplateSizeBytes + " bytes");
+        }
+
+        final LiquidWalker walker = new LiquidWalker(new CommonTreeNodeStream(root), this.tags, this.filters, this.parseSettings.flavor);
+
+        Callable<String> task = new Callable<String>() {
+            public String call() throws Exception {
+                try {
+                    LNode node = walker.walk();
+                    Object rendered = node.render(new TemplateContext(protectionSettings, renderSettings, parseSettings.flavor, variables));
+                    return rendered == null ? "" : String.valueOf(rendered);
+                }
+                catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
 
         try {
-            LNode node = walker.walk();
-            Object rendered = node.render(context);
-            return rendered == null ? "" : String.valueOf(rendered);
+            Future<String> future = executorService.submit(task);
+            return future.get(this.protectionSettings.maxRenderTimeMillis, TimeUnit.MILLISECONDS);
         }
-        catch (Exception e) {
-            throw new RuntimeException(e);
+        catch (TimeoutException e) {
+            throw new RuntimeException("exceeded the max amount of time (" +
+                    this.protectionSettings.maxRenderTimeMillis + " ms.)");
+        }
+        catch (Throwable t) {
+            throw new RuntimeException("Oops, something unexpected happened: ", t);
+        }
+        finally {
+            if (shutdown) {
+                executorService.shutdown();
+            }
         }
     }
 
@@ -300,5 +363,14 @@ public class Template {
                 }
             }
         }
+    }
+
+    private void putStringKey(boolean convertValueToMap, String key, Object value, Map<String, Object> map) {
+
+        if (key == null) {
+            throw new RuntimeException("key cannot be null");
+        }
+
+        map.put(key, convertValueToMap ? parseSettings.mapper.convertValue(value, Map.class) : value);
     }
 }
